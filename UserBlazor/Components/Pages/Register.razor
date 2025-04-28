@@ -1,0 +1,47 @@
+﻿@page "/register"
+@using UserBlazor.Model
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<h4>Регистрация</h4>
+<EditForm Model="newUser" OnValidSubmit="HandleRegister">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+    <InputText @bind-Value="newUser.Name" placeholder="Имя" class="form-control" />
+    <InputText @bind-Value="newUser.Email" placeholder="Email" class="form-control" />
+    <InputText @bind-Value="newUser.Descrioption" placeholder="Описание" class="form-control" />
+    <InputText @bind-Value="newUser.Password" type="password" placeholder="Пароль" class="form-control" />
+    <button type="submit" class="btn btn-primary">Зарегистрироваться</button>
+</EditForm>
+
+@code {
+
+    private User newUser = new User();
+
+    private async Task HandleRegister()
+    {
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/User", newUser);
+            if (response.IsSuccessStatusCode)
+            {
+                newUser = new User();
+            }
+            else
+            {
+                var errorMessage = await response.Content.ReadAsStringAsync();
+                ShowAlert($"Ошибка регистрации: {errorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Ошибка: {ex.Message}");
+        }
+    }
+    private void ShowAlert(string message)
+    {
+        JS.InvokeVoidAsync("alert", message);
+    }
+}

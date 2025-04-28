@@ -1,0 +1,171 @@
+﻿@page "/usermanagement"
+@using UserBlazor.Model
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<h3 class="text-center my-4">Управление пользователями</h3>
+
+<div class="container">
+    <h4 class="my-3">Список пользователей</h4>
+    <table class="table table-striped table-bordered">
+        <thead class="thead-dark">
+            <tr>
+                <th>Имя</th>
+                <th>Email</th>
+                <th>Описание</th>
+                <th>Роль</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var user in users)
+            {
+                <tr>
+                    <td>@user.Name</td>
+                    <td>@user.Email</td>
+                    <td>@user.Descrioption</td>
+                    <td>@user.Role</td>
+                    <td>
+                        <button @onclick="() => EditUser(user)" class="btn btn-warning btn-sm">Редактировать</button>
+                        <button @onclick="() => DeleteUser(user.id_User)" class="btn btn-danger btn-sm">Удалить</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <h4 class="my-4">@((isEditing ? "Редактировать пользователя" : "Добавить нового пользователя"))</h4>
+    <EditForm Model="newUser" OnValidSubmit="isEditing ? HandleUpdateUser : HandleCreateUser">
+        <DataAnnotationsValidator />
+        <div class="form-group">
+            <InputText @bind-Value="newUser.Name" placeholder="Имя" class="form-control" />
+        </div>
+        <div class="form-group">
+            <ValidationMessage For="@(() => newUser.Email)" class="text-danger" />
+            <InputText @bind-Value="newUser.Email" placeholder="Email" class="form-control" />
+        </div>
+        <div class="form-group">
+            <InputText @bind-Value="newUser.Descrioption" placeholder="Описание" class="form-control" />
+        </div>
+        <div class="form-group">
+            <InputText @bind-Value="newUser.Password" type="password" placeholder="Пароль" class="form-control" />
+        </div>
+        <button type="submit" class="btn btn-primary">@((isEditing) ? "Сохранить" : "Добавить пользователя")</button>
+        @if (isEditing)
+        {
+            <button type="button" class="btn btn-secondary" @onclick="ResetForm">Отмена</button>
+        }
+    </EditForm>
+</div>
+
+@code {
+    private bool isEditing = false;
+    private bool isRegistering = true;
+    private User newUser = new User();
+    private List<User> users = new List<User>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsers();
+    }
+
+    private async Task LoadUsers()
+    {
+        try
+        {
+            var response = await Http.GetAsync("api/User");
+            if (response.IsSuccessStatusCode)
+            {
+                users = await response.Content.ReadFromJsonAsync<List<User>>();
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Ошибка загрузки пользователей: {ex.Message}");
+        }
+    }
+
+    private async Task HandleUpdateUser()
+    {
+        try
+        {
+            var response = await Http.PutAsJsonAsync($"api/User/{newUser.id_User}", newUser); 
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadUsers();
+                ResetForm();
+            }
+            else
+            {
+                var errorMessage = await response.Content.ReadAsStringAsync();
+                ShowAlert($"Ошибка обновления пользователя: {errorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Ошибка: {ex.Message}");
+        }
+    }
+
+    private async Task HandleCreateUser()
+    {
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/User", newUser);
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadUsers();
+                ResetForm();
+            }
+            else
+            {
+                var errorMessage = await response.Content.ReadAsStringAsync();
+                ShowAlert($"Ошибка добавления пользователя: {errorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Ошибка: {ex.Message}");
+        }
+    }
+
+    private void EditUser(User user)
+    {
+        newUser = user;
+        isEditing = true; 
+    }
+
+    private async Task DeleteUser(int id)
+    {
+        try
+        {
+            var response = await Http.DeleteAsync($"api/User/{id}");
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadUsers();
+            }
+            else
+            {
+                var errorMessage = await response.Content.ReadAsStringAsync();
+                ShowAlert($"Ошибка удаления пользователя: {errorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Ошибка: {ex.Message}");
+        }
+    }
+
+    private void ResetForm()
+    {
+        newUser = new User();   
+        isEditing = false; 
+    }
+
+    private void ShowAlert(string message)
+    {
+        JS.InvokeVoidAsync("alert", message);
+    }
+}

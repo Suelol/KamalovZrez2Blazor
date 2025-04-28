@@ -1,0 +1,127 @@
+﻿@page "/profile"
+@using UserBlazor.Model
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Личный кабинет</PageTitle>
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <h3 class="text-center mb-4">Личный кабинет</h3>
+            
+            @if (!isLoaded)
+            {
+                <p>Загрузка данных...</p>
+            }
+            else if (currentUser == null)
+            {
+                <p>Пользователь не найден</p>
+            }
+            else
+            {
+                <!-- Форма редактирования -->
+                <EditForm Model="currentUser" OnValidSubmit="HandleUpdate">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary />
+
+                    <div class="form-group mb-3">
+                        <label>Имя</label>
+                        <InputText @bind-Value="currentUser.Name" class="form-control" />
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label>Email</label>
+                        <InputText @bind-Value="currentUser.Email" class="form-control" />
+                        <ValidationMessage For="@(() => currentUser.Email)" />
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label>Описание</label>
+                        <InputTextArea @bind-Value="currentUser.Descrioption" class="form-control" />
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label>Новый пароль (оставьте пустым, чтобы не менять)</label>
+                        <InputText type="password" @bind-Value="newPassword" class="form-control" />
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100">Сохранить изменения</button>
+                </EditForm>
+
+                <!-- Кнопка выхода -->
+                <div class="mt-3 text-center">
+                    <button @onclick="Logout" class="btn btn-danger">
+                        Выйти
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private User? currentUser;
+    private bool isLoaded;
+    private int userId;
+    private string newPassword = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        userId = Counter.idU.id_User;
+        await LoadUser();
+        isLoaded = true;
+    }
+
+    private async Task LoadUser()
+    {
+        try
+        {
+            var response = await Http.GetAsync($"api/User/{userId}");
+            if (response.IsSuccessStatusCode)
+            {
+                currentUser = await response.Content.ReadFromJsonAsync<User>();
+                // Не показываем текущий пароль
+                currentUser.Password = string.Empty;
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Ошибка: {ex.Message}");
+        }
+    }
+
+    private async Task HandleUpdate()
+    {
+        try
+        {
+            // Если указан новый пароль - обновляем его
+            if (!string.IsNullOrEmpty(newPassword))
+            {
+                currentUser.Password = newPassword;
+            }
+            
+            var response = await Http.PutAsJsonAsync($"api/User/{userId}", currentUser);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                await JS.InvokeVoidAsync("alert", "Данные успешно обновлены!");
+                newPassword = string.Empty; // Сбрасываем поле пароля
+                await LoadUser();
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Ошибка: {ex.Message}");
+        }
+    }
+
+    private async Task Logout()
+    {
+        await JS.InvokeVoidAsync("localStorage.removeItem", "userId");
+        await JS.InvokeVoidAsync("localStorage.removeItem", "userName");
+        Navigation.NavigateTo("/");
+    }
+}

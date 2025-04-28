@@ -1,0 +1,278 @@
+﻿@page "/tasks"
+@using Apishka.Model
+@using UserBlazor.Model
+@inject HttpClient Http
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+
+<h3 class="text-center my-4">Управление арендами</h3>
+
+<div class="container">
+    <!-- Добавляем панель поиска -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="input-group">
+                <input 
+                    type="text" 
+                    class="form-control" 
+                    placeholder="Поиск по названию, описанию..." 
+                    @bind="searchTerm"
+                    @bind:event="oninput"
+                />
+                @if (!string.IsNullOrEmpty(searchTerm))
+                {
+                    <button class="btn btn-outline-secondary" @onclick="ClearSearch">
+                        &times;
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+
+    <h4 class="my-3">Список аренд</h4>
+    <table class="table table-striped table-bordered">
+        <thead class="thead-dark">
+        <tr>
+            <th>Название</th>
+            <th>Описание</th>
+            <th>Действия</th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var task in PaginatedTasks)
+        {
+            <tr>
+                <td>@task.Title</td>
+                <td>@task.Description</td>
+                <td>@task.Deadline.ToString("dd.MM.yyyy HH:mm")</td>
+                <td>@GetContractorName(task.ContractorId)</td>
+                <td>
+                    <button @onclick="() => EditTask(task)" class="btn btn-warning btn-sm">Редактировать</button>
+                    <button @onclick="() => DeleteTask(task.TaskItemId)" class="btn btn-danger btn-sm">Удалить</button>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+
+    <div class="d-flex justify-content-between">
+        <button class="btn btn-secondary" @onclick="PreviousPage" disabled="@(!CanGoToPreviousPage)">Предыдущая</button>
+        <button class="btn btn-secondary" @onclick="NextPage" disabled="@(!CanGoToNextPage)">Следующая</button>
+    </div>
+
+    <h4 class="my-4">@((isEditing ? "Редактировать аренду" : "Добавить новую аренду"))</h4>
+    <EditForm Model="newTask" OnValidSubmit="isEditing ? HandleUpdateTask : HandleCreateTask">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+        
+        <div class="form-group">
+            <InputText @bind-Value="newTask.Title" placeholder="Название" class="form-control" />
+        </div>
+        <div class="form-group">
+            <InputTextArea @bind-Value="newTask.Description" placeholder="Описание" class="form-control" />
+        </div>
+        <div class="form-group">
+            <InputDate @bind-Value="newTask.Deadline" class="form-control" />
+        </div>
+        <div class="form-group">
+            <InputSelect @bind-Value="newTask.ContractorId" class="form-control">
+                <option value="">Выберите исполнителя</option>
+                @foreach (var contractor in contractors)
+                {
+                    <option value="@contractor.ContractorId">@contractor.Name</option>
+                }
+            </InputSelect>
+        </div>
+        
+        <button type="submit" class="btn btn-primary">@((isEditing) ? "Сохранить" : "Добавить аренду")</button>
+        @if (isEditing)
+        {
+            <button type="button" class="btn btn-secondary" @onclick="ResetForm">Отмена</button>
+        }
+    </EditForm>
+</div>
+
+@code {
+    private bool isEditing = false;
+    private TaskItem newTask = new TaskItem();
+    private List<TaskItem> tasks = new List<TaskItem>();
+    private List<Contractor> contractors = new List<Contractor>();
+    private string searchTerm = string.Empty;
+    private List<TaskItem> allTasks = new List<TaskItem>();
+
+    // Пагинация
+    private const int PageSize = 10;
+    private int currentPage = 1;
+
+    private List<TaskItem> PaginatedTasks => filteredTasks.Skip((currentPage - 1) * PageSize).Take(PageSize).ToList();
+    private bool CanGoToPreviousPage => currentPage > 1;
+    private bool CanGoToNextPage => currentPage * PageSize < filteredTasks.Count;
+
+    // Заменяем tasks на filteredTasks
+    private List<TaskItem> filteredTasks => allTasks
+        .Where(task => 
+            string.IsNullOrEmpty(searchTerm) ||
+            (task.Title?.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (task.Description?.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (GetContractorName(task.ContractorId)?.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ?? false)
+        )
+        .ToList();
+
+    // Обновляем метод загрузки задач
+    private async Task LoadTasks()
+    {
+        try
+        {
+            var response = await Http.GetAsync("api/Rental");
+            if (response.IsSuccessStatusCode)
+            {
+                allTasks = await response.Content.ReadFromJsonAsync<List<TaskItem>>();
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Ошибка загрузки задач: {ex.Message}");
+        }
+    }
+
+    // Добавляем метод очистки поиска
+    private void ClearSearch()
+    {
+        searchTerm = string.Empty;
+    }
+
+    // Модифицируем метод получения имени подрядчика
+    private string GetContractorName(int? contractorId)
+    {
+        if (contractorId == null) return "Не назначен";
+        var contractor = contractors.FirstOrDefault(c => c.ContractorId == contractorId);
+        return contractor?.Name ?? "Неизвестная аренда";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTasks();
+        await LoadContractors();
+    }
+
+    private async Task LoadContractors()
+    {
+        try
+        {
+            var response = await Http.GetAsync("api/Rental");
+            if (response.IsSuccessStatusCode)
+            {
+                contractors = await response.Content.ReadFromJsonAsync<List<Contractor>>();
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Ошибка загрузки аренды: {ex.Message}");
+        }
+    }
+
+    private async Task HandleUpdateTask()
+    {
+        try
+        {
+            var response = await Http.PutAsJsonAsync($"api/Rental/{newTask.TaskItemId}", newTask);
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadTasks();
+                ResetForm();
+            }
+            else
+            {
+                var errorMessage = await response.Content.ReadAsStringAsync();
+                ShowAlert($"Ошибка обновления аренды: {errorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Ошибка: {ex.Message}");
+        }
+    }
+
+    private async Task HandleCreateTask()
+    {
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/Rental", newTask);
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadTasks();
+                ResetForm();
+            }
+            else
+            {
+                var errorMessage = await response.Content.ReadAsStringAsync();
+                ShowAlert($"Ошибка добавления аренды: {errorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Ошибка: {ex.Message}");
+        }
+    }
+
+    private void EditTask(TaskItem task)
+    {
+        newTask = new TaskItem
+        {
+            TaskItemId = task.TaskItemId,
+            Title = task.Title,
+            Description = task.Description,
+            Deadline = task.Deadline,
+            ContractorId = task.ContractorId
+        };
+        isEditing = true;
+    }
+
+    private async Task DeleteTask(int id)
+    {
+        try
+        {
+            var response = await Http.DeleteAsync($"api/Rental/{id}");
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadTasks();
+            }
+            else
+            {
+                var errorMessage = await response.Content.ReadAsStringAsync();
+                ShowAlert($"Ошибка удаления аренды: {errorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Ошибка: {ex.Message}");
+        }
+    }
+
+    private void ResetForm()
+    {
+        newTask = new TaskItem();
+        isEditing = false;
+    }
+
+    private void ShowAlert(string message)
+    {
+        JS.InvokeVoidAsync("alert", message);
+    }
+
+    private void NextPage()
+    {
+        if (CanGoToNextPage)
+        {
+            currentPage++;
+        }
+    }
+
+    private void PreviousPage()
+    {
+        if (CanGoToPreviousPage)
+        {
+            currentPage--;
+        }
+    }
+}

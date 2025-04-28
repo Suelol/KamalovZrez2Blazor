@@ -1,0 +1,220 @@
+﻿@page "/contractors"
+@using Apishka.Model
+@using UserBlazor.Model
+@inject HttpClient Http
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+
+<h3 class="text-center my-4">Управление инструментами</h3>
+
+<div class="container">
+    <!-- Панель поиска -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="input-group">
+                <input
+                    type="text"
+                    class="form-control"
+                    placeholder="Поиск по названию..."
+                    @bind="searchTerm"
+                    @bind:event="oninput"
+                />
+                @if (!string.IsNullOrEmpty(searchTerm))
+                {
+                    <button class="btn btn-outline-secondary" @onclick="ClearSearch">
+                        &times;
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+
+    <h4 class="my-3">Список инструментов</h4>
+    <table class="table table-striped table-bordered">
+        <thead class="thead-dark">
+        <tr>
+            <th>Название</th>
+            <th>Бренд</th>
+            <th>Действия</th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var contractor in filteredContractors.Skip((currentPage - 1) * pageSize).Take(pageSize))
+        {
+            <tr>
+                <td>@contractor.Name</td>
+                <td>@contractor.ContactInfo</td>
+                <td>
+                    <button @onclick="() => EditContractor(contractor)" class="btn btn-warning btn-sm">Редактировать</button>
+                    <button @onclick="() => DeleteContractor(contractor.ContractorId)" class="btn btn-danger btn-sm">Удалить</button>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+
+    <!-- Пагинация -->
+    <div class="d-flex justify-content-between">
+        <button @onclick="PrevPage" class="btn btn-primary" disabled="@((currentPage == 1))">Предыдущая</button>
+        <span>Страница @currentPage из @totalPages</span>
+        <button @onclick="NextPage" class="btn btn-primary" disabled="@((currentPage == totalPages))">Следующая</button>
+    </div>
+
+    <h4 class="my-4">@((isEditing ? "Редактировать инструмент" : "Добавить новый инструмент"))</h4>
+    <EditForm Model="newContractor" OnValidSubmit="isEditing ? HandleUpdateContractor : HandleCreateContractor">
+        <DataAnnotationsValidator />
+        <div class="form-group">
+            <InputText @bind-Value="newContractor.Name" placeholder="Имя" class="form-control" />
+        </div>
+        <div class="form-group">
+            <InputText @bind-Value="newContractor.ContactInfo" placeholder="Контактная информация" class="form-control" />
+        </div>
+        <button type="submit" class="btn btn-primary">@((isEditing) ? "Сохранить" : "Добавить инструмент")</button>
+        @if (isEditing)
+        {
+            <button type="button" class="btn btn-secondary" @onclick="ResetForm">Отмена</button>
+        }
+    </EditForm>
+</div>
+
+@code {
+    private bool isEditing = false;
+    private Contractor newContractor = new Contractor();
+    private List<Contractor> contractors = new List<Contractor>();
+    private string searchTerm = string.Empty;
+    private int currentPage = 1;
+    private int pageSize = 10;
+
+    private List<Contractor> filteredContractors => contractors
+        .Where(contractor =>
+            string.IsNullOrEmpty(searchTerm) ||
+            (contractor.Name?.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (contractor.ContactInfo?.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ?? false)
+        )
+        .ToList();
+
+    private int totalPages => (int)Math.Ceiling(filteredContractors.Count / (double)pageSize);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadContractors();
+    }
+
+    private async Task LoadContractors()
+    {
+        try
+        {
+            var response = await Http.GetAsync("api/Instrument");
+            if (response.IsSuccessStatusCode)
+            {
+                contractors = await response.Content.ReadFromJsonAsync<List<Contractor>>();
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Ошибка загрузки инструмента: {ex.Message}");
+        }
+    }
+
+    private async Task HandleUpdateContractor()
+    {
+        try
+        {
+            var response = await Http.PutAsJsonAsync($"api/Instrument/{newContractor.ContractorId}", newContractor);
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadContractors();
+                ResetForm();
+            }
+            else
+            {
+                var errorMessage = await response.Content.ReadAsStringAsync();
+                ShowAlert($"Ошибка обновления инструмента: {errorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Ошибка: {ex.Message}");
+        }
+    }
+
+    private async Task HandleCreateContractor()
+    {
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/Instrument", newContractor);
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadContractors();
+                ResetForm();
+            }
+            else
+            {
+                var errorMessage = await response.Content.ReadAsStringAsync();
+                ShowAlert($"Ошибка добавления инструмента: {errorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Ошибка: {ex.Message}");
+        }
+    }
+
+    private void EditContractor(Contractor contractor)
+    {
+        newContractor = new Contractor
+        {
+            ContractorId = contractor.ContractorId,
+            Name = contractor.Name,
+            ContactInfo = contractor.ContactInfo
+        };
+        isEditing = true;
+    }
+
+    private async Task DeleteContractor(int id)
+    {
+        try
+        {
+            var response = await Http.DeleteAsync($"api/Instrument/{id}");
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadContractors();
+            }
+            else
+            {
+                var errorMessage = await response.Content.ReadAsStringAsync();
+                ShowAlert($"Ошибка удаления инструмента: {errorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Ошибка: {ex.Message}");
+        }
+    }
+
+    private void ResetForm()
+    {
+        newContractor = new Contractor();
+        isEditing = false;
+    }
+
+    private void ShowAlert(string message)
+    {
+        JS.InvokeVoidAsync("alert", message);
+    }
+
+    private void ClearSearch()
+    {
+        searchTerm = string.Empty;
+    }
+
+    private void PrevPage()
+    {
+        if (currentPage > 1) currentPage--;
+    }
+
+    private void NextPage()
+    {
+        if (currentPage < totalPages) currentPage++;
+    }
+}
