@@ -2,7 +2,7 @@
 
 namespace Apishka.Model
 {
-    public class Contractor
+    public class Instrument
     {
         [Key]
         public int ContractorId { get; set; }
